@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PokemonInstance, MoveInstance, Trainer, Item } from '../types/pokemon';
 import { PokemonSprite } from './PokemonSprite';
+import { HD2DBattleScene, CameraPreset } from './HD2DBattleScene';
 import { TYPE_COLORS, TYPE_NAMES_ZH, getTypeEffectiveness, getEffectivenessMessage } from '../utils/typeChart';
 import { sound } from '../utils/audio';
 import { loadMetaProgression, unlockSpecies } from '../utils/metaProgression';
@@ -50,6 +51,19 @@ export const BattleArena: React.FC<BattleArenaProps> = ({
     trainer ? trainer.team : initialWild ? [initialWild] : []
   );
   const [activeOpponentIndex, setActiveOpponentIndex] = useState<number>(0);
+
+  // Visual mode: HD-2D 3D vs Classic 2D
+  const [renderMode, setRenderMode] = useState<'hd2d' | 'classic'>('hd2d');
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('isometric');
+
+  const cycleCameraPreset = () => {
+    sound.playSelect();
+    setCameraPreset((prev) => {
+      if (prev === 'isometric') return 'action';
+      if (prev === 'action') return 'tactical';
+      return 'isometric';
+    });
+  };
 
   // Sub-drawers for bag or party (only when opened; moves are directly visible!)
   const [drawer, setDrawer] = useState<'none' | 'bag' | 'party'>('none');
@@ -574,32 +588,61 @@ export const BattleArena: React.FC<BattleArenaProps> = ({
 
   return (
     <div className="relative min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-between font-sans overflow-hidden select-none">
-      {/* Authentic Battle Background */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src="/src/assets/images/dungeon_battle_arena_1792647581274.jpg"
-          alt="Battle Arena"
-          className="w-full h-full object-cover filter brightness-75 scale-105"
-          referrerPolicy="no-referrer"
+      {/* Background: HD-2D 3D Canvas OR Classic 2D Arena */}
+      {renderMode === 'hd2d' ? (
+        <HD2DBattleScene
+          playerPokemon={activePlayer}
+          opponentPokemon={activeOpponent}
+          shakeTarget={shakeTarget}
+          isCatching={catchState.inProgress}
+          catchShakes={catchState.shakes}
+          cameraPreset={cameraPreset}
+          onCycleCamera={cycleCameraPreset}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-slate-950/70" />
-      </div>
+      ) : (
+        <div className="absolute inset-0 z-0">
+          <img
+            src="/src/assets/images/dungeon_battle_arena_1792647581274.jpg"
+            alt="Battle Arena"
+            className="w-full h-full object-cover filter brightness-75 scale-105"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-slate-950/70" />
+        </div>
+      )}
 
       {/* Top Banner */}
       <div className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 backdrop-blur-md border border-slate-700 text-xs">
-          {trainer ? (
-            <>
-              <span className="font-bold text-amber-400">{trainer.titleZh}</span>
-              <span className="text-white font-medium">{trainer.name}</span>
-            </>
-          ) : (
-            <span className="text-rose-400 font-medium">野生地牢遭遇戰</span>
-          )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 backdrop-blur-md border border-slate-700 text-xs shadow-md">
+            {trainer ? (
+              <>
+                <span className="font-bold text-amber-400">{trainer.titleZh}</span>
+                <span className="text-white font-medium">{trainer.name}</span>
+              </>
+            ) : (
+              <span className="text-rose-400 font-medium">野生地牢遭遇戰</span>
+            )}
+          </div>
+
+          {/* HD-2D Mode Toggle */}
+          <button
+            onClick={() => {
+              sound.playSelect();
+              setRenderMode((m) => (m === 'hd2d' ? 'classic' : 'hd2d'));
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer shadow-md ${
+              renderMode === 'hd2d'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30'
+                : 'bg-slate-800/90 text-slate-300 border-slate-700 hover:bg-slate-700'
+            }`}
+          >
+            <span>{renderMode === 'hd2d' ? '🌟 HD-2D 3D' : '🕹️ 經典 2D'}</span>
+          </button>
         </div>
 
         {trainer && (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/90 backdrop-blur-md border border-slate-700">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/90 backdrop-blur-md border border-slate-700 shadow-md">
             <span className="text-[10px] text-slate-400 mr-1">剩餘:</span>
             {opponentTeam.map((p, i) => (
               <div
@@ -654,47 +697,51 @@ export const BattleArena: React.FC<BattleArenaProps> = ({
             </div>
           </div>
 
-          {/* Opponent Animated Sprite */}
-          <div className={`transition-transform duration-150 ${shakeTarget === 'opponent' ? 'animate-bounce' : ''}`}>
-            {catchState.inProgress ? (
-              <div className="w-24 h-24 flex flex-col items-center justify-center">
-                <div className={`w-12 h-12 rounded-full border-2 border-white flex flex-col overflow-hidden shadow-2xl ${
-                  catchState.shakes > 0 ? 'animate-spin' : ''
-                }`}>
-                  <div className="bg-rose-600 h-1/2 w-full" />
-                  <div className="bg-white h-1/2 w-full flex items-center justify-center relative">
-                    <div className="w-3 h-3 rounded-full bg-white border-2 border-slate-900 absolute -top-1.5 shadow" />
+          {/* Opponent Animated Sprite (Displayed in Classic 2D mode; in HD-2D mode it renders in 3D WebGL) */}
+          {renderMode === 'classic' && (
+            <div className={`transition-transform duration-150 ${shakeTarget === 'opponent' ? 'animate-bounce' : ''}`}>
+              {catchState.inProgress ? (
+                <div className="w-24 h-24 flex flex-col items-center justify-center">
+                  <div className={`w-12 h-12 rounded-full border-2 border-white flex flex-col overflow-hidden shadow-2xl ${
+                    catchState.shakes > 0 ? 'animate-spin' : ''
+                  }`}>
+                    <div className="bg-rose-600 h-1/2 w-full" />
+                    <div className="bg-white h-1/2 w-full flex items-center justify-center relative">
+                      <div className="w-3 h-3 rounded-full bg-white border-2 border-slate-900 absolute -top-1.5 shadow" />
+                    </div>
                   </div>
+                  <span className="text-xs font-bold text-amber-300 mt-2">
+                    晃動第 {catchState.shakes} 次...
+                  </span>
                 </div>
-                <span className="text-xs font-bold text-amber-300 mt-2">
-                  晃動第 {catchState.shakes} 次...
-                </span>
-              </div>
-            ) : (
-              <PokemonSprite
-                speciesId={activeOpponent.speciesId}
-                nameZh={activeOpponent.nameZh}
-                types={activeOpponent.types}
-                isShiny={activeOpponent.isShiny}
-                size="xl"
-              />
-            )}
-          </div>
+              ) : (
+                <PokemonSprite
+                  speciesId={activeOpponent.speciesId}
+                  nameZh={activeOpponent.nameZh}
+                  types={activeOpponent.types}
+                  isShiny={activeOpponent.isShiny}
+                  size="xl"
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Player Area (Bottom Left) */}
         <div className="flex flex-col-reverse sm:flex-row items-start sm:items-center justify-start gap-4 md:gap-8 mt-2">
-          {/* Player Back Animated Sprite */}
-          <div className={`transition-transform duration-150 ${shakeTarget === 'player' ? 'animate-pulse scale-95' : ''}`}>
-            <PokemonSprite
-              speciesId={activePlayer.speciesId}
-              nameZh={activePlayer.nameZh}
-              types={activePlayer.types}
-              isShiny={activePlayer.isShiny}
-              isBack={true}
-              size="xl"
-            />
-          </div>
+          {/* Player Back Animated Sprite (Classic 2D mode) */}
+          {renderMode === 'classic' && (
+            <div className={`transition-transform duration-150 ${shakeTarget === 'player' ? 'animate-pulse scale-95' : ''}`}>
+              <PokemonSprite
+                speciesId={activePlayer.speciesId}
+                nameZh={activePlayer.nameZh}
+                types={activePlayer.types}
+                isShiny={activePlayer.isShiny}
+                isBack={true}
+                size="xl"
+              />
+            </div>
+          )}
 
           {/* Player Status HUD */}
           <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3.5 shadow-2xl min-w-[240px] sm:min-w-[300px]">

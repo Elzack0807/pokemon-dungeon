@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DungeonNode, PokemonInstance, Item } from '../types/pokemon';
 import { PokemonSprite } from './PokemonSprite';
+import { HD2DDungeonScene } from './HD2DDungeonScene';
 import { TYPE_COLORS, TYPE_NAMES_ZH } from '../utils/typeChart';
 import { sound } from '../utils/audio';
 import {
@@ -47,6 +48,7 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
   onOpenParty,
   onOpenBag,
 }) => {
+  const [show3DDiorama, setShow3DDiorama] = useState<boolean>(true);
   const activeLead = party[0] || party.find((p) => p.currentHp > 0);
 
   // Sector title calculation
@@ -153,6 +155,21 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
             <span className="text-[10px] text-slate-400 font-mono">({party.length}/3)</span>
           </button>
 
+          {/* HD-2D Diorama Toggle */}
+          <button
+            onClick={() => {
+              sound.playSelect();
+              setShow3DDiorama((s) => !s);
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+              show3DDiorama
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+            }`}
+          >
+            <span>{show3DDiorama ? '🌟 HD-2D 沙盤' : '🗺️ 簡約地圖'}</span>
+          </button>
+
           {/* Sound Toggle */}
           <button
             onClick={onToggleSound}
@@ -165,9 +182,9 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
       </header>
 
       {/* Main Floor Route Navigator */}
-      <main className="relative z-10 flex-1 max-w-5xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
+      <main className="relative z-10 flex-1 max-w-5xl w-full mx-auto px-4 py-6 flex flex-col justify-center space-y-6">
         {/* Floor Progress Bar */}
-        <div className="w-full mb-8">
+        <div className="w-full">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
             <span>探索進度</span>
             <span className="font-mono tabular-nums">第 {currentFloor} 層 / 共 {totalFloors} 層</span>
@@ -180,8 +197,21 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
           </div>
         </div>
 
+        {/* HD-2D 3D Sandplay Diorama */}
+        {show3DDiorama && (
+          <div className="w-full animate-fade-in">
+            <HD2DDungeonScene
+              currentFloor={currentFloor}
+              totalFloors={totalFloors}
+              nodes={nodes}
+              leadPokemon={activeLead}
+              onSelectNode={onSelectNode}
+            />
+          </div>
+        )}
+
         {/* Section Heading */}
-        <div className="text-center mb-6">
+        <div className="text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-white mb-1.5">
             選擇本層前進路線
           </h2>
