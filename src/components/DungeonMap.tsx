@@ -15,6 +15,8 @@ import {
   ArrowRight,
   Sparkles,
   Swords,
+  Home,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface DungeonMapProps {
@@ -29,6 +31,7 @@ interface DungeonMapProps {
   onSelectNode: (node: DungeonNode) => void;
   onAdvanceFloor: () => void;
   onLootChest: (coins: number, item?: Item) => void;
+  onReturnToTitle: () => void;
   onOpenParty: () => void;
   onOpenBag: () => void;
 }
@@ -45,14 +48,16 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
   onSelectNode,
   onAdvanceFloor,
   onLootChest,
+  onReturnToTitle,
   onOpenParty,
   onOpenBag,
 }) => {
   const [defeatedEnemyIds, setDefeatedEnemyIds] = useState<string[]>([]);
   const [hasLootedChest, setHasLootedChest] = useState<boolean>(false);
   const [lootToast, setLootToast] = useState<{ message: string; sub?: string } | null>(null);
+  const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false);
 
-  // Reset floor state when ascending/descending floors
+  // Reset floor state when changing floors
   useEffect(() => {
     setDefeatedEnemyIds([]);
     setHasLootedChest(false);
@@ -130,7 +135,7 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
             <>
               <Swords className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-slate-300">
-                地圖怪物直接生成，碰撞敵人即刻交戰；探索傳送門通往下層！
+                怪物直接生成，主動追逐可走位閃躲；營火寶箱商人隨機出現！
               </span>
             </>
           )}
@@ -138,6 +143,19 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
 
         {/* Right HUD Controls */}
         <div className="flex items-center gap-2">
+          {/* Return to Home / Title */}
+          <button
+            onClick={() => {
+              sound.playSelect();
+              setShowExitConfirm(true);
+            }}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+            title="返回首頁"
+          >
+            <Home className="w-3.5 h-3.5 text-rose-400" />
+            <span className="hidden sm:inline">回首頁</span>
+          </button>
+
           {/* PokéCoins */}
           <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-mono font-bold">
             <Coins className="w-3.5 h-3.5 text-amber-400" />
@@ -195,6 +213,39 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
             {lootToast.sub && (
               <div className="text-xs text-amber-100 font-normal mt-0.5">{lootToast.sub}</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Return to Title Confirmation Modal */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 max-w-sm w-full rounded-2xl p-5 shadow-2xl space-y-3.5">
+            <div className="flex items-center gap-2 text-rose-400 font-bold text-base">
+              <AlertTriangle className="w-5 h-5" />
+              <span>返回遊戲首頁確認</span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              確定要返回遊戲首頁嗎？當前地牢進度將會重置，但博士研究所的天賦勛章與已收服圖鑑將永久保留。
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                繼續冒險
+              </button>
+              <button
+                onClick={() => {
+                  sound.playSelect();
+                  setShowExitConfirm(false);
+                  onReturnToTitle();
+                }}
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                確認返回首頁
+              </button>
+            </div>
           </div>
         </div>
       )}

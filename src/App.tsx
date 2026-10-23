@@ -278,6 +278,7 @@ export default function App() {
           onSelectNode={handleSelectNode}
           onAdvanceFloor={advanceFloor}
           onLootChest={handleLootChest}
+          onReturnToTitle={handleRestart}
           onOpenParty={() => setShowPartyModal(true)}
           onOpenBag={() => setShowBagModal(true)}
         />

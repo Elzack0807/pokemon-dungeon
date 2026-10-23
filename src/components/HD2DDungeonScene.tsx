@@ -43,7 +43,17 @@ export interface RoamingEnemy {
   patrolRadius: number;
   patrolAngle: number;
   patrolSpeed: number;
+  chaseSpeed: number;
+  aiState: 'patrol' | 'chase' | 'cooldown';
+  alertTimer: number;
   defeated: boolean;
+}
+
+export interface FloorProp {
+  type: 'camp' | 'shop' | 'chest' | 'stele';
+  id: string;
+  x: number;
+  z: number;
 }
 
 interface HD2DDungeonSceneProps {
@@ -102,13 +112,15 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
   const [isJoystickActive, setIsJoystickActive] = useState<boolean>(false);
   const joystickTouchId = useRef<number | null>(null);
 
-  // Minimap player & enemy tracker for UI
+  // Live Minimap radar state for UI
   const [radarState, setRadarState] = useState<{
     player: { x: number; z: number };
-    enemies: { id: string; x: number; z: number; name: string }[];
+    enemies: { id: string; x: number; z: number; name: string; isChasing: boolean }[];
+    props: FloorProp[];
   }>({
     player: { x: 0, z: 14 },
     enemies: [],
+    props: [],
   });
 
   // Control keys & virtual movement vectors
@@ -153,16 +165,63 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     );
   }, [currentFloor, isBossFloor, nodes, playerPartyLevel, totalFloors]);
 
-  // Generate visible roaming enemies for this floor (persisted for the floor)
+  // 1. RANDOMIZED DUNGEON PROPS GENERATION (營火/寶箱/商人 隨機出現)
+  const spawnedPropsRef = useRef<FloorProp[]>([]);
+
+  useEffect(() => {
+    // 6 candidate alcove positions in the dungeon
+    const candidateSlots = [
+      { x: -11, z: 10 },
+      { x: 11, z: 10 },
+      { x: -11, z: -10 },
+      { x: 11, z: -10 },
+      { x: -9, z: 0 },
+      { x: 9, z: 0 },
+    ];
+    // Deterministic or pseudo-random shuffle per floor
+    const shuffled = [...candidateSlots].sort(() => Math.random() - 0.5);
+    const props: FloorProp[] = [];
+
+    // Campfire: 60% chance, or guaranteed if floor node is 'camp'
+    const spawnCamp = nodes.some((n) => n.type === 'camp') || Math.random() < 0.65;
+    if (spawnCamp && shuffled.length > 0) {
+      const slot = shuffled.pop()!;
+      props.push({ type: 'camp', id: `camp_${currentFloor}`, x: slot.x, z: slot.z });
+    }
+
+    // Merchant Shop: 50% chance, or guaranteed if floor node is 'shop'
+    const spawnShop = nodes.some((n) => n.type === 'shop') || Math.random() < 0.55;
+    if (spawnShop && shuffled.length > 0) {
+      const slot = shuffled.pop()!;
+      props.push({ type: 'shop', id: `shop_${currentFloor}`, x: slot.x, z: slot.z });
+    }
+
+    // Treasure Chest: 85% chance
+    const spawnChest = Math.random() < 0.85;
+    if (spawnChest && shuffled.length > 0) {
+      const slot = shuffled.pop()!;
+      props.push({ type: 'chest', id: `chest_${currentFloor}`, x: slot.x, z: slot.z });
+    }
+
+    // Ancient Mystery Stele: 45% chance, or guaranteed if floor node is 'event'
+    const spawnStele = nodes.some((n) => n.type === 'event') || Math.random() < 0.45;
+    if (spawnStele && shuffled.length > 0) {
+      const slot = shuffled.pop()!;
+      props.push({ type: 'stele', id: `stele_${currentFloor}`, x: slot.x, z: slot.z });
+    }
+
+    spawnedPropsRef.current = props;
+  }, [currentFloor, nodes]);
+
+  // 2. VISIBLE ROAMING ENEMIES WITH ACTIVE AGGRESSION (敵人主動攻擊性)
   const roamingEnemiesRef = useRef<RoamingEnemy[]>([]);
 
   useEffect(() => {
-    // Generate 3 to 4 visible patrolling enemies on the map
     const enemyConfigs = [
-      { id: `enemy_${currentFloor}_1`, type: 'wild' as const, baseX: -6.5, baseZ: 5, radius: 2.2, speed: 1.1 },
-      { id: `enemy_${currentFloor}_2`, type: 'wild' as const, baseX: 6.5, baseZ: 3, radius: 2.5, speed: 0.9 },
-      { id: `enemy_${currentFloor}_3`, type: 'trainer' as const, baseX: -5.5, baseZ: -4, radius: 1.8, speed: 1.3 },
-      { id: `enemy_${currentFloor}_4`, type: 'wild' as const, baseX: 5.5, baseZ: -6, radius: 2.0, speed: 1.0 },
+      { id: `enemy_${currentFloor}_1`, type: 'wild' as const, baseX: -6.5, baseZ: 5, radius: 2.2, pSpeed: 1.1, cSpeed: 4.2 },
+      { id: `enemy_${currentFloor}_2`, type: 'wild' as const, baseX: 6.5, baseZ: 3, radius: 2.5, pSpeed: 0.9, cSpeed: 4.4 },
+      { id: `enemy_${currentFloor}_3`, type: 'trainer' as const, baseX: -5.5, baseZ: -4, radius: 1.8, pSpeed: 1.3, cSpeed: 4.5 },
+      { id: `enemy_${currentFloor}_4`, type: 'wild' as const, baseX: 5.5, baseZ: -6, radius: 2.0, pSpeed: 1.0, cSpeed: 4.3 },
     ];
 
     const generated: RoamingEnemy[] = enemyConfigs.map((cfg, idx) => {
@@ -179,7 +238,10 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
           baseZ: cfg.baseZ,
           patrolRadius: cfg.radius,
           patrolAngle: idx * 1.5,
-          patrolSpeed: cfg.speed,
+          patrolSpeed: cfg.pSpeed,
+          chaseSpeed: cfg.cSpeed,
+          aiState: 'patrol',
+          alertTimer: 0,
           defeated: defeatedEnemyIds.includes(cfg.id),
         };
       } else {
@@ -194,7 +256,10 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
           baseZ: cfg.baseZ,
           patrolRadius: cfg.radius,
           patrolAngle: idx * 1.5,
-          patrolSpeed: cfg.speed,
+          patrolSpeed: cfg.pSpeed,
+          chaseSpeed: cfg.cSpeed,
+          aiState: 'patrol',
+          alertTimer: 0,
           defeated: defeatedEnemyIds.includes(cfg.id),
         };
       }
@@ -203,7 +268,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     roamingEnemiesRef.current = generated;
   }, [currentFloor, defeatedEnemyIds, playerPartyLevel]);
 
-  // Update defeated state when props change
+  // Sync defeated enemies
   useEffect(() => {
     roamingEnemiesRef.current.forEach((e) => {
       if (defeatedEnemyIds.includes(e.id)) {
@@ -229,8 +294,8 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
 
       const encounterTitle =
         enemy.type === 'trainer'
-          ? `⚔️ ${enemy.trainer?.name || '遊蕩訓練家'} 發起對戰！`
-          : `🌿 接觸遭遇！野生 ${enemy.pkm.nameZh} Lv.${enemy.pkm.level}！`;
+          ? `⚔️ ${enemy.trainer?.name || '遊蕩訓練家'} 抓住了你！`
+          : `🌿 接觸交戰！野生 ${enemy.pkm.nameZh} Lv.${enemy.pkm.level}！`;
 
       setEncounterAlert({ active: true, title: encounterTitle });
 
@@ -253,7 +318,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
                 floor: currentFloor,
                 type: 'battle',
                 title: `野生 ${enemy.pkm.nameZh}`,
-                description: `洞穴中遭遇的野生 ${enemy.pkm.nameZh}！`,
+                description: `地牢中主動撲來的野生 ${enemy.pkm.nameZh}！`,
                 completed: false,
                 accessible: true,
                 wildPokemon: enemy.pkm,
@@ -359,17 +424,15 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
 
-    // 1. Scene & Atmosphere (Polished RPG Lighting)
+    // 1. Scene & Atmosphere (52° Isometric RPG Perspective)
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0e17);
     scene.fog = new THREE.FogExp2(0x0a0e17, 0.032);
 
-    // 2. Camera: Optimized Crisp Top-Down RPG Isometric Perspective (52° tilt)
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
     camera.position.set(0, 13.5, 23.5);
     camera.lookAt(0, 0.8, 14);
 
-    // 3. WebGL Renderer
     const renderer = new THREE.WebGLRenderer({
       antialias: !isSoftwareGl,
       powerPreference: 'high-performance',
@@ -385,12 +448,12 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
 
     container.appendChild(renderer.domElement);
 
-    // 4. PMREM Environment
+    // 2. Environment
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
     pmremGenerator.dispose();
 
-    // 5. Lighting Setup
+    // 3. Lighting Setup
     const ambientLight = new THREE.HemisphereLight(0x334155, 0x0f172a, 1.4);
     scene.add(ambientLight);
 
@@ -410,7 +473,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     }
     scene.add(sunLight);
 
-    // 6. Ground Geometry (Flagstone Floor with Crisp Texture)
+    // 4. Ground Geometry
     const floorTex = createStoneFloorTexture();
     floorTex.repeat.set(12, 16);
     floorTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -426,24 +489,21 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     floorMesh.receiveShadow = !isSoftwareGl;
     scene.add(floorMesh);
 
-    // 7. Perimeter Stone Walls & Dungeon Corridors
+    // 5. Perimeter Stone Walls
     const wallTex = createStoneWallTexture();
     wallTex.repeat.set(8, 2);
     const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9 });
 
-    // North Sanctum Wall
     const northWall = new THREE.Mesh(new THREE.BoxGeometry(36, 6, 1.5), wallMat);
     northWall.position.set(0, 3, -21.5);
     northWall.receiveShadow = !isSoftwareGl;
     scene.add(northWall);
 
-    // South Entrance Wall
     const southWall = new THREE.Mesh(new THREE.BoxGeometry(36, 5, 1.5), wallMat);
     southWall.position.set(0, 2.5, 21.5);
     southWall.receiveShadow = !isSoftwareGl;
     scene.add(southWall);
 
-    // West & East Walls
     const westWall = new THREE.Mesh(new THREE.BoxGeometry(1.5, 5, 44), wallMat);
     westWall.position.set(-17.5, 2.5, 0);
     westWall.receiveShadow = !isSoftwareGl;
@@ -454,7 +514,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     eastWall.receiveShadow = !isSoftwareGl;
     scene.add(eastWall);
 
-    // 8. Ancient Columns & Wall Sconces with Dynamic PointLights
+    // 6. Ancient Columns & Wall Sconces
     const torchLights: { light: THREE.PointLight; flame: THREE.Mesh; baseIntensity: number }[] = [];
     const flameTex = createTorchFlameTexture();
     const flameMat = new THREE.MeshBasicMaterial({
@@ -486,7 +546,6 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       shaftMesh.receiveShadow = !isSoftwareGl;
       colGroup.add(shaftMesh);
 
-      // Torch Sconce & Flame
       const isWest = pos.x < 0;
       const flameMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.85), flameMat);
       flameMesh.position.set(isWest ? 0.85 : -0.85, 2.8, 0);
@@ -500,46 +559,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       scene.add(colGroup);
     });
 
-    // 9. Tall Grass Patches
-    const grassTex = createGrassTexture();
-    const grassMat = new THREE.MeshStandardMaterial({
-      map: grassTex,
-      transparent: true,
-      alphaTest: 0.25,
-      roughness: 0.8,
-      side: THREE.DoubleSide,
-    });
-
-    const grassZones = [
-      { minX: -13, maxX: -4, minZ: -4, maxZ: 7, count: 28 },
-      { minX: 4, maxX: 13, minZ: -7, maxZ: 4, count: 28 },
-    ];
-
-    grassZones.forEach((gz) => {
-      const bedGeo = new THREE.PlaneGeometry(gz.maxX - gz.minX, gz.maxZ - gz.minZ);
-      const bedMat = new THREE.MeshBasicMaterial({
-        color: 0x14341c,
-        transparent: true,
-        opacity: 0.45,
-      });
-      const bedMesh = new THREE.Mesh(bedGeo, bedMat);
-      bedMesh.rotation.x = -Math.PI / 2;
-      bedMesh.position.set((gz.minX + gz.maxX) / 2, 0.02, (gz.minZ + gz.maxZ) / 2);
-      scene.add(bedMesh);
-
-      for (let i = 0; i < gz.count; i++) {
-        const gx = gz.minX + Math.random() * (gz.maxX - gz.minX);
-        const gzPos = gz.minZ + Math.random() * (gz.maxZ - gz.minZ);
-        const scale = 0.8 + Math.random() * 0.4;
-
-        const tuft = new THREE.Mesh(new THREE.PlaneGeometry(1.2 * scale, 1.1 * scale), grassMat);
-        tuft.position.set(gx, (1.1 * scale) / 2, gzPos);
-        tuft.rotation.y = Math.random() * Math.PI;
-        scene.add(tuft);
-      }
-    });
-
-    // 10. Boss Sanctum Dais & Physical Boss Entity
+    // 7. Boss Sanctum Dais & Physical Boss Entity
     let bossAuraMesh: THREE.Mesh | undefined;
     let bossSpriteMesh: THREE.Mesh | undefined;
     const bossPosition = { x: 0, y: 0.6, z: -15.5 };
@@ -564,7 +584,6 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     runeDisc.position.y = 0.61;
     daisGroup.add(runeDisc);
 
-    // Flanking Braziers
     [-3.6, 3.6].forEach((bx) => {
       const bCol = new THREE.Mesh(
         new THREE.CylinderGeometry(0.4, 0.5, 1.8, 12),
@@ -585,7 +604,6 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
 
     scene.add(daisGroup);
 
-    // Boss Sprite Billboard
     if (bossNode) {
       const bossPkm = bossNode.trainer?.team[0] || createPokemon('onix', 10, false);
       const bossSpriteUrl = getSpriteUrl(bossPkm);
@@ -623,7 +641,6 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         bossSpriteMesh = bSprite;
       });
 
-      // Boss Overhead Nameplate
       const nameplateCanvas = document.createElement('canvas');
       nameplateCanvas.width = 384;
       nameplateCanvas.height = 96;
@@ -656,7 +673,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       scene.add(npMesh);
     }
 
-    // 11. Descent Portal / Stairs to Next Floor
+    // 8. Descent Portal
     const portalPosition = { x: 0, y: 0.05, z: -19.5 };
     const portalTex = createPortalRuneTexture();
     const portalMat = new THREE.MeshBasicMaterial({
@@ -670,114 +687,98 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     portalMesh.position.set(portalPosition.x, portalPosition.y, portalPosition.z);
     scene.add(portalMesh);
 
-    // Stone Portal Arch
-    const archMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
-    const leftArch = new THREE.Mesh(new THREE.BoxGeometry(0.8, 4.5, 0.8), archMat);
-    leftArch.position.set(-2.2, 2.2, -19.5);
-    scene.add(leftArch);
-    const rightArch = new THREE.Mesh(new THREE.BoxGeometry(0.8, 4.5, 0.8), archMat);
-    rightArch.position.set(2.2, 2.2, -19.5);
-    scene.add(rightArch);
-    const topArch = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.8, 1.0), archMat);
-    topArch.position.set(0, 4.6, -19.5);
-    scene.add(topArch);
-
-    // 12. Interactive Props: Campfire, Merchant Stall, Stele, Treasure Chest
-    const campPosition = { x: -11, y: 0, z: 10 };
-    const shopPosition = { x: 11, y: 0, z: 10 };
-    const stelePosition = { x: -11, y: 0, z: -10 };
-    const chestPosition = { x: 11, y: 0, z: -10 };
-
-    // Campfire Model
-    const campGroup = new THREE.Group();
-    campGroup.position.set(campPosition.x, campPosition.y, campPosition.z);
-    const cRing = new THREE.Mesh(
-      new THREE.TorusGeometry(1.0, 0.22, 8, 16),
-      new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 })
-    );
-    cRing.rotation.x = -Math.PI / 2;
-    cRing.position.y = 0.15;
-    campGroup.add(cRing);
-    const cFlame = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.4), flameMat);
-    cFlame.position.y = 0.85;
-    campGroup.add(cFlame);
-    const cLight = new THREE.PointLight(0xf97316, 2.8, 8, 1.5);
-    cLight.position.y = 1.0;
-    campGroup.add(cLight);
-    torchLights.push({ light: cLight, flame: cFlame, baseIntensity: 2.8 });
-    scene.add(campGroup);
-
-    // Merchant Stall Model
-    const shopGroup = new THREE.Group();
-    shopGroup.position.set(shopPosition.x, shopPosition.y, shopPosition.z);
-    const counter = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 1.1, 1.2),
-      new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 })
-    );
-    counter.position.y = 0.55;
-    shopGroup.add(counter);
-    const roof = new THREE.Mesh(
-      new THREE.BoxGeometry(2.8, 0.25, 1.8),
-      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.7 })
-    );
-    roof.position.y = 2.4;
-    shopGroup.add(roof);
-    scene.add(shopGroup);
-
-    // Ancient Mystery Stele Model
-    const steleGroup = new THREE.Group();
-    steleGroup.position.set(stelePosition.x, stelePosition.y, stelePosition.z);
-    const steleMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 3.2, 0.6),
-      new THREE.MeshStandardMaterial({
-        color: 0x1e293b,
-        roughness: 0.75,
-        emissive: 0x0e7490,
-        emissiveIntensity: 0.25,
-      })
-    );
-    steleMesh.position.y = 1.6;
-    steleMesh.castShadow = !isSoftwareGl;
-    steleGroup.add(steleMesh);
-    scene.add(steleGroup);
-
-    // Treasure Chest Model
+    // 9. INSTANTIATE DYNAMIC RANDOMIZED PROPS (營火/寶箱/商人 隨機出現)
     let chestLidMesh: THREE.Mesh | undefined;
-    const chestGroup = new THREE.Group();
-    chestGroup.position.set(chestPosition.x, chestPosition.y, chestPosition.z);
 
-    const chestBase = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 0.7, 0.9),
-      new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.8, metalness: 0.2 })
-    );
-    chestBase.position.y = 0.35;
-    chestBase.castShadow = !isSoftwareGl;
-    chestGroup.add(chestBase);
+    spawnedPropsRef.current.forEach((prop) => {
+      if (prop.type === 'camp') {
+        const campGroup = new THREE.Group();
+        campGroup.position.set(prop.x, 0, prop.z);
+        const cRing = new THREE.Mesh(
+          new THREE.TorusGeometry(1.0, 0.22, 8, 16),
+          new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 })
+        );
+        cRing.rotation.x = -Math.PI / 2;
+        cRing.position.y = 0.15;
+        campGroup.add(cRing);
+        const cFlame = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.4), flameMat);
+        cFlame.position.y = 0.85;
+        campGroup.add(cFlame);
+        const cLight = new THREE.PointLight(0xf97316, 2.8, 8, 1.5);
+        cLight.position.y = 1.0;
+        campGroup.add(cLight);
+        torchLights.push({ light: cLight, flame: cFlame, baseIntensity: 2.8 });
+        scene.add(campGroup);
+      } else if (prop.type === 'shop') {
+        const shopGroup = new THREE.Group();
+        shopGroup.position.set(prop.x, 0, prop.z);
+        const counter = new THREE.Mesh(
+          new THREE.BoxGeometry(2.4, 1.1, 1.2),
+          new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 })
+        );
+        counter.position.y = 0.55;
+        shopGroup.add(counter);
+        const roof = new THREE.Mesh(
+          new THREE.BoxGeometry(2.8, 0.25, 1.8),
+          new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.7 })
+        );
+        roof.position.y = 2.4;
+        shopGroup.add(roof);
+        scene.add(shopGroup);
+      } else if (prop.type === 'stele') {
+        const steleGroup = new THREE.Group();
+        steleGroup.position.set(prop.x, 0, prop.z);
+        const steleMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(1.2, 3.2, 0.6),
+          new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.75,
+            emissive: 0x0e7490,
+            emissiveIntensity: 0.25,
+          })
+        );
+        steleMesh.position.y = 1.6;
+        steleMesh.castShadow = !isSoftwareGl;
+        steleGroup.add(steleMesh);
+        scene.add(steleGroup);
+      } else if (prop.type === 'chest') {
+        const chestGroup = new THREE.Group();
+        chestGroup.position.set(prop.x, 0, prop.z);
+        const chestBase = new THREE.Mesh(
+          new THREE.BoxGeometry(1.4, 0.7, 0.9),
+          new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.8, metalness: 0.2 })
+        );
+        chestBase.position.y = 0.35;
+        chestBase.castShadow = !isSoftwareGl;
+        chestGroup.add(chestBase);
 
-    const lid = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.45, 0.45, 1.4, 12, 1, false, 0, Math.PI),
-      new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.75, metalness: 0.3 })
-    );
-    lid.rotation.z = Math.PI / 2;
-    lid.position.set(0, 0.7, 0);
-    chestGroup.add(lid);
-    chestLidMesh = lid;
+        const lid = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.45, 0.45, 1.4, 12, 1, false, 0, Math.PI),
+          new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.75, metalness: 0.3 })
+        );
+        lid.rotation.z = Math.PI / 2;
+        lid.position.set(0, 0.7, 0);
+        chestGroup.add(lid);
+        chestLidMesh = lid;
 
-    if (hasLootedChest) {
-      lid.rotation.x = -Math.PI / 3;
-    }
+        if (hasLootedChest) {
+          lid.rotation.x = -Math.PI / 3;
+        }
 
-    const chestLight = new THREE.PointLight(0xf59e0b, hasLootedChest ? 0.3 : 2.2, 5);
-    chestLight.position.set(0, 1.0, 0);
-    chestGroup.add(chestLight);
-    scene.add(chestGroup);
+        const chestLight = new THREE.PointLight(0xf59e0b, hasLootedChest ? 0.3 : 2.2, 5);
+        chestLight.position.set(0, 1.0, 0);
+        chestGroup.add(chestLight);
+        scene.add(chestGroup);
+      }
+    });
 
-    // 13. VISIBLE ROAMING ENEMIES (接觸式遇敵實體！)
+    // 10. VISIBLE ROAMING ENEMIES WITH ACTIVE CHASE AI & ALERT CUES
     const enemySceneObjects: {
       enemy: RoamingEnemy;
       group: THREE.Group;
       spriteMesh?: THREE.Mesh;
       tagMesh: THREE.Mesh;
+      alertMesh: THREE.Mesh;
     }[] = [];
 
     const contactShadowTex = createContactShadowTexture();
@@ -789,6 +790,28 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       depthWrite: false,
     });
 
+    // Exclamation Mark Alert Texture
+    const alertCanvas = document.createElement('canvas');
+    alertCanvas.width = 64;
+    alertCanvas.height = 64;
+    const aCtx = alertCanvas.getContext('2d')!;
+    aCtx.fillStyle = '#ef4444';
+    aCtx.beginPath();
+    aCtx.arc(32, 32, 28, 0, Math.PI * 2);
+    aCtx.fill();
+    aCtx.strokeStyle = '#ffffff';
+    aCtx.lineWidth = 4;
+    aCtx.stroke();
+    aCtx.fillStyle = '#ffffff';
+    aCtx.font = 'bold 38px sans-serif';
+    aCtx.textAlign = 'center';
+    aCtx.textBaseline = 'middle';
+    aCtx.fillText('!', 32, 34);
+
+    const alertTex = new THREE.CanvasTexture(alertCanvas);
+    alertTex.colorSpace = THREE.SRGBColorSpace;
+    const alertMat = new THREE.MeshBasicMaterial({ map: alertTex, transparent: true });
+
     const enemyTexLoader = new THREE.TextureLoader();
 
     roamingEnemiesRef.current.forEach((enemy) => {
@@ -797,13 +820,11 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       const eGroup = new THREE.Group();
       eGroup.position.set(enemy.x, 0, enemy.z);
 
-      // Contact shadow under enemy
       const eShadow = new THREE.Mesh(shadowGeo, shadowMat);
       eShadow.rotation.x = -Math.PI / 2;
       eShadow.position.y = 0.03;
       eGroup.add(eShadow);
 
-      // Enemy Sprite Billboard
       const spriteUrl = getSpriteUrl(enemy.pkm);
       let sMesh: THREE.Mesh | undefined;
 
@@ -824,7 +845,6 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         sMesh.castShadow = !isSoftwareGl;
         eGroup.add(sMesh);
 
-        // Store reference
         const entry = enemySceneObjects.find((o) => o.enemy.id === enemy.id);
         if (entry) entry.spriteMesh = sMesh;
       });
@@ -834,7 +854,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       tagCanvas.width = 256;
       tagCanvas.height = 64;
       const tCtx = tagCanvas.getContext('2d')!;
-      tCtx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+      tCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
       tCtx.roundRect(8, 8, 240, 48, 12);
       tCtx.fill();
       tCtx.strokeStyle = enemy.type === 'trainer' ? '#f59e0b' : '#ef4444';
@@ -856,11 +876,17 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       tagMesh.position.y = 1.85;
       eGroup.add(tagMesh);
 
+      // Chasing Alert Badge Mesh
+      const alertMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), alertMat);
+      alertMesh.position.y = 2.45;
+      alertMesh.visible = false;
+      eGroup.add(alertMesh);
+
       scene.add(eGroup);
-      enemySceneObjects.push({ enemy, group: eGroup, tagMesh });
+      enemySceneObjects.push({ enemy, group: eGroup, tagMesh, alertMesh });
     });
 
-    // 14. Player Billboard Sprite & Contact Shadow
+    // 11. Player Billboard Sprite
     const playerGroup = new THREE.Group();
     playerGroup.position.set(playerPos.current.x, 0, playerPos.current.z);
 
@@ -900,7 +926,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
 
     scene.add(playerGroup);
 
-    // 15. Click / Tap Destination Ripple Ring
+    // 12. Click / Tap Destination Ripple Ring
     const clickRingGeo = new THREE.RingGeometry(0.35, 0.52, 24);
     const clickRingMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
@@ -914,12 +940,10 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     clickRingMesh.visible = false;
     scene.add(clickRingMesh);
 
-    // Click on ground raycasting
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const handleCanvasPointerDown = (e: MouseEvent | TouchEvent) => {
-      // Ignore if clicking joystick area
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
@@ -955,7 +979,6 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
 
     renderer.domElement.addEventListener('click', handleCanvasPointerDown);
 
-    // 16. Keyboard Listeners
     const handleKeyDown = (e: KeyboardEvent) => {
       keysPressed.current[e.key.toLowerCase()] = true;
     };
@@ -966,7 +989,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // 17. Animation & Physics Loop
+    // 13. Animation & Physics Loop
     let clock = new THREE.Clock();
     let animFrameId: number;
     let walkTimer = 0;
@@ -977,41 +1000,90 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       const delta = Math.min(clock.getDelta(), 0.1);
       const time = clock.getElapsedTime();
 
-      // Torch flame flickers
       torchLights.forEach((tl, i) => {
         const noise = Math.sin(time * 8 + i * 2.3) * 0.2 + Math.sin(time * 15 + i) * 0.15;
         tl.light.intensity = tl.baseIntensity + noise;
         tl.flame.scale.set(1 + noise * 0.2, 1 + noise * 0.35, 1);
       });
 
-      // Boss aura & portal rotation
       if (bossAuraMesh) bossAuraMesh.rotation.z = time * 0.8;
       portalMesh.rotation.z = -time * 0.6;
       portalMesh.scale.setScalar(1 + Math.sin(time * 3) * 0.08);
 
-      // 18. ENEMY PATROLLING AI (Visible wandering on map!)
-      enemySceneObjects.forEach(({ enemy, group, spriteMesh, tagMesh }) => {
+      const px = playerPos.current.x;
+      const pz = playerPos.current.z;
+
+      // 14. ENEMY ACTIVE AGGRESSION & EVASION AI (敵人主動追蹤 & 操控閃躲)
+      enemySceneObjects.forEach(({ enemy, group, spriteMesh, tagMesh, alertMesh }) => {
         if (enemy.defeated) {
           group.visible = false;
           return;
         }
 
-        // Patrol circular pacing around baseline
-        enemy.patrolAngle += delta * enemy.patrolSpeed;
-        const targetX = enemy.baseX + Math.cos(enemy.patrolAngle) * enemy.patrolRadius;
-        const targetZ = enemy.baseZ + Math.sin(enemy.patrolAngle) * (enemy.patrolRadius * 0.7);
+        const distToPlayer = Math.hypot(px - enemy.x, pz - enemy.z);
 
-        enemy.x = targetX;
-        enemy.z = targetZ;
+        // AI State Transitions
+        if (enemy.aiState === 'patrol') {
+          // If player steps into detection zone (5.8 units) -> Start actively chasing!
+          if (distToPlayer <= 5.8) {
+            enemy.aiState = 'chase';
+          } else {
+            // Normal patrol pacing
+            enemy.patrolAngle += delta * enemy.patrolSpeed;
+            const targetX = enemy.baseX + Math.cos(enemy.patrolAngle) * enemy.patrolRadius;
+            const targetZ = enemy.baseZ + Math.sin(enemy.patrolAngle) * (enemy.patrolRadius * 0.7);
+            enemy.x = targetX;
+            enemy.z = targetZ;
+          }
+        } else if (enemy.aiState === 'chase') {
+          // If player skillfully dodges and breaks line of sight/distance (> 8.5 units) -> Chase lost!
+          if (distToPlayer > 8.5) {
+            enemy.aiState = 'cooldown';
+            enemy.alertTimer = 2.2; // 2.2s cooldown
+          } else {
+            // Actively chase player!
+            const normX = (px - enemy.x) / distToPlayer;
+            const normZ = (pz - enemy.z) / distToPlayer;
+            enemy.x += normX * enemy.chaseSpeed * delta;
+            enemy.z += normZ * enemy.chaseSpeed * delta;
+          }
+        } else if (enemy.aiState === 'cooldown') {
+          enemy.alertTimer -= delta;
+          // Slowly walk back to patrol anchor
+          const distToBase = Math.hypot(enemy.baseX - enemy.x, enemy.baseZ - enemy.z);
+          if (distToBase > 0.5) {
+            enemy.x += ((enemy.baseX - enemy.x) / distToBase) * 2.2 * delta;
+            enemy.z += ((enemy.baseZ - enemy.z) / distToBase) * 2.2 * delta;
+          }
+          if (enemy.alertTimer <= 0) {
+            enemy.aiState = 'patrol';
+          }
+        }
+
+        // Clamp to room bounds
+        enemy.x = Math.max(-14, Math.min(14, enemy.x));
+        enemy.z = Math.max(-18, Math.min(18, enemy.z));
         group.position.set(enemy.x, 0, enemy.z);
 
-        // Face towards movement direction
+        // Visual feedback based on state
         if (spriteMesh) {
-          const moveDx = -Math.sin(enemy.patrolAngle);
-          spriteMesh.scale.x = moveDx < 0 ? -1 : 1;
-          // Gentle hopping
-          spriteMesh.position.y = 0.8 + Math.abs(Math.sin(enemy.patrolAngle * 3)) * 0.12;
+          if (enemy.aiState === 'chase') {
+            const faceDx = px - enemy.x;
+            spriteMesh.scale.x = faceDx < 0 ? -1 : 1;
+            // Aggressive hopping while chasing
+            spriteMesh.position.y = 0.8 + Math.abs(Math.sin(time * 16)) * 0.22;
+          } else {
+            const moveDx = -Math.sin(enemy.patrolAngle);
+            spriteMesh.scale.x = moveDx < 0 ? -1 : 1;
+            spriteMesh.position.y = 0.8 + Math.abs(Math.sin(enemy.patrolAngle * 3)) * 0.12;
+          }
           spriteMesh.quaternion.copy(camera.quaternion);
+        }
+
+        // Alert indicator `!`
+        if (alertMesh) {
+          alertMesh.visible = enemy.aiState === 'chase';
+          alertMesh.quaternion.copy(camera.quaternion);
         }
         tagMesh.quaternion.copy(camera.quaternion);
       });
@@ -1024,15 +1096,13 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         if (keysPressed.current['w'] || keysPressed.current['arrowup']) moveZ -= 1;
         if (keysPressed.current['s'] || keysPressed.current['arrowdown']) moveZ += 1;
         if (keysPressed.current['a'] || keysPressed.current['arrowleft']) moveX -= 1;
-        if (keysPressed.current['d'] || keysPressed.current['arrowright']) moveX -= 1;
+        if (keysPressed.current['d'] || keysPressed.current['arrowright']) moveX += 1;
 
-        // Merge virtual joystick movement
         if (virtualMovement.current.x !== 0 || virtualMovement.current.z !== 0) {
           moveX += virtualMovement.current.x;
           moveZ += virtualMovement.current.z;
         }
 
-        // Merge click/tap destination
         if (clickTarget.current.active) {
           const dx = clickTarget.current.x - playerPos.current.x;
           const dz = clickTarget.current.z - playerPos.current.z;
@@ -1070,13 +1140,11 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
           const nextX = playerPos.current.x + playerPos.current.vx * delta;
           const nextZ = playerPos.current.z + playerPos.current.vz * delta;
 
-          // Dungeon Bounds Collision
           playerPos.current.x = Math.max(-14.2, Math.min(14.2, nextX));
           playerPos.current.z = Math.max(-18.5, Math.min(18.5, nextZ));
 
           walkTimer += delta;
 
-          // Sprite directional facing flip
           if (playerSpriteMesh) {
             if (normX < -0.15) {
               playerSpriteMesh.scale.x = -Math.abs(playerSpriteMesh.scale.x);
@@ -1092,10 +1160,9 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         }
       }
 
-      // Synchronize player position
       playerGroup.position.set(playerPos.current.x, 0, playerPos.current.z);
 
-      // Camera smooth follow (Optimized RPG Isometric View)
+      // Smooth Camera Follow
       const targetCamX = playerPos.current.x;
       const targetCamY = 13.0;
       const targetCamZ = playerPos.current.z + 13.0;
@@ -1105,36 +1172,34 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       camera.position.z = THREE.MathUtils.damp(camera.position.z, targetCamZ, 4.5, delta);
       camera.lookAt(playerPos.current.x, 1.0, playerPos.current.z);
 
-      if (playerSpriteMesh) {
-        playerSpriteMesh.quaternion.copy(camera.quaternion);
-      }
-      if (bossSpriteMesh) {
-        bossSpriteMesh.quaternion.copy(camera.quaternion);
-      }
+      if (playerSpriteMesh) playerSpriteMesh.quaternion.copy(camera.quaternion);
+      if (bossSpriteMesh) bossSpriteMesh.quaternion.copy(camera.quaternion);
 
-      // Update radar HUD every few frames for performance
+      // Radar Minimap Update
       radarUpdateCounter++;
       if (radarUpdateCounter % 4 === 0) {
         setRadarState({
           player: { x: playerPos.current.x, z: playerPos.current.z },
           enemies: roamingEnemiesRef.current
             .filter((e) => !e.defeated)
-            .map((e) => ({ id: e.id, x: e.x, z: e.z, name: e.pkm.nameZh })),
+            .map((e) => ({
+              id: e.id,
+              x: e.x,
+              z: e.z,
+              name: e.pkm.nameZh,
+              isChasing: e.aiState === 'chase',
+            })),
+          props: spawnedPropsRef.current,
         });
       }
 
-      // 19. CONTACT & PROXIMITY DETECTION
-      const px = playerPos.current.x;
-      const pz = playerPos.current.z;
-
-      // Check contact with visible roaming enemies
+      // CONTACT & PROXIMITY DETECTION
       let touchedEnemy: RoamingEnemy | null = null;
       let nearbyEnemy: RoamingEnemy | null = null;
 
       for (const enemy of roamingEnemiesRef.current) {
         if (enemy.defeated) continue;
-        const dist = Math.hypot(px - enemy.x, pz - enemy.z);
-        // Direct physical collision: auto-trigger battle!
+        const dist = Math.hypot(playerPos.current.x - enemy.x, playerPos.current.z - enemy.z);
         if (dist <= 1.25) {
           touchedEnemy = enemy;
           break;
@@ -1149,17 +1214,23 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       }
 
       // Check boss proximity & contact
-      const distToBoss = Math.hypot(px - bossPosition.x, pz - bossPosition.z);
+      const distToBoss = Math.hypot(playerPos.current.x - bossPosition.x, playerPos.current.z - bossPosition.z);
       if (bossNode && distToBoss <= 1.5) {
         triggerBossBattle();
         return;
       }
 
-      // Proximity Action Prompts
+      // Check active randomized props proximity
+      const nearbyProp = spawnedPropsRef.current.find((p) => {
+        const d = Math.hypot(playerPos.current.x - p.x, playerPos.current.z - p.z);
+        return d <= 2.5;
+      });
+
+      // Contextual Action Prompts
       if (nearbyEnemy) {
         setActivePrompt({
           text: `【接觸交戰】${nearbyEnemy.type === 'trainer' ? nearbyEnemy.trainer?.name : '野生 ' + nearbyEnemy.pkm.nameZh} Lv.${nearbyEnemy.pkm.level}`,
-          subText: '靠近接觸或按 E 立即交戰！',
+          subText: nearbyEnemy.aiState === 'chase' ? '敵人正在全力追擊！操控走位或即刻開戰！' : '靠近接觸或按 E 立即交戰！',
           type: 'enemy',
           action: () => triggerContactBattle(nearbyEnemy!),
         });
@@ -1170,7 +1241,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
           type: 'boss',
           action: triggerBossBattle,
         });
-      } else if (Math.hypot(px - campPosition.x, pz - campPosition.z) <= 2.6) {
+      } else if (nearbyProp?.type === 'camp') {
         setActivePrompt({
           text: '【營火修憩】甘甜泉水與溫暖營火',
           subText: '回復全體隊伍 HP 與招式 PP，按 E 進入休整',
@@ -1180,7 +1251,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
             onOpenCamp();
           },
         });
-      } else if (Math.hypot(px - shopPosition.x, pz - shopPosition.z) <= 2.6) {
+      } else if (nearbyProp?.type === 'shop') {
         setActivePrompt({
           text: '【流浪商人】友誼補給商店',
           subText: '使用金幣購買精靈球與藥水道具，按 E 瀏覽',
@@ -1190,7 +1261,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
             onOpenShop();
           },
         });
-      } else if (Math.hypot(px - stelePosition.x, pz - stelePosition.z) <= 2.6) {
+      } else if (nearbyProp?.type === 'stele') {
         setActivePrompt({
           text: '【遠古石碑】調查古老遺跡之秘',
           subText: '解讀刻劃在石碑上的地牢奇遇，按 E 調查',
@@ -1201,7 +1272,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
             onTriggerEvent(evId);
           },
         });
-      } else if (!hasLootedChest && Math.hypot(px - chestPosition.x, pz - chestPosition.z) <= 2.4) {
+      } else if (nearbyProp?.type === 'chest' && !hasLootedChest) {
         setActivePrompt({
           text: '【古代寶箱】神秘的地牢密寶',
           subText: '按 E 開啟拾取金幣與道具！',
@@ -1215,7 +1286,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
             onLootChest(earnedCoins, itemReward);
           },
         });
-      } else if (Math.hypot(px - portalPosition.x, pz - portalPosition.z) <= 2.8) {
+      } else if (Math.hypot(playerPos.current.x - portalPosition.x, playerPos.current.z - portalPosition.z) <= 2.8) {
         setActivePrompt({
           text: `【聖域傳送門】前往第 ${currentFloor + 1} 層階梯`,
           subText: isBossFloor ? '首領強大的威壓籠罩著傳送門！' : '按 E 前往下一層地牢探索',
@@ -1229,7 +1300,6 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         setActivePrompt(null);
       }
 
-      // Handle [E] key for active prompt
       if (keysPressed.current['e'] || keysPressed.current['enter'] || keysPressed.current[' ']) {
         keysPressed.current['e'] = false;
         keysPressed.current['enter'] = false;
@@ -1308,7 +1378,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
           <Compass className="w-4 h-4 text-rose-400" />
           <span className="font-bold text-white">第 {currentFloor} 層 · 地底迷宮</span>
           <span className="text-[10px] text-amber-400 font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-            接觸遇敵
+            敵人主動追逐
           </span>
         </div>
 
@@ -1326,62 +1396,57 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
 
           {/* Radar Screen Map View */}
           <div className="relative w-44 h-32 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
-            {/* Grid Lines */}
+            {/* Grid */}
             <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:16px_16px] opacity-40" />
 
             {/* Boss Altar Icon at Top */}
             {bossNode && (
               <div
                 className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-rose-500/40 border border-rose-400 flex items-center justify-center animate-ping"
-                style={{
-                  left: '50%',
-                  top: '12%',
-                }}
+                style={{ left: '50%', top: '12%' }}
               />
             )}
             {bossNode && (
               <div
                 className="absolute -translate-x-1/2 -translate-y-1/2 text-[10px]"
-                style={{
-                  left: '50%',
-                  top: '12%',
-                }}
+                style={{ left: '50%', top: '12%' }}
               >
                 👑
               </div>
             )}
 
-            {/* Interactive Props on Radar */}
-            <div
-              className="absolute -translate-x-1/2 -translate-y-1/2 text-[9px]"
-              style={{ left: '25%', top: '75%' }}
-            >
-              🔥
-            </div>
-            <div
-              className="absolute -translate-x-1/2 -translate-y-1/2 text-[9px]"
-              style={{ left: '75%', top: '75%' }}
-            >
-              🛒
-            </div>
-            {!hasLootedChest && (
-              <div
-                className="absolute -translate-x-1/2 -translate-y-1/2 text-[9px]"
-                style={{ left: '75%', top: '30%' }}
-              >
-                🎁
-              </div>
-            )}
+            {/* Dynamic Spawned Props on Radar */}
+            {radarState.props.map((p) => {
+              const rx = ((p.x + 16) / 32) * 100;
+              const rz = ((p.z + 20) / 40) * 100;
+              if (p.type === 'chest' && hasLootedChest) return null;
+
+              return (
+                <div
+                  key={p.id}
+                  className="absolute -translate-x-1/2 -translate-y-1/2 text-[10px]"
+                  style={{ left: `${rx}%`, top: `${rz}%` }}
+                >
+                  {p.type === 'camp' && '🔥'}
+                  {p.type === 'shop' && '🛒'}
+                  {p.type === 'chest' && '🎁'}
+                  {p.type === 'stele' && '🪨'}
+                </div>
+              );
+            })}
 
             {/* Wandering Enemies Dots */}
             {radarState.enemies.map((e) => {
-              // Convert 3D world coords [-16..16, -20..20] to radar [0..100%]
               const rx = ((e.x + 16) / 32) * 100;
               const rz = ((e.z + 20) / 40) * 100;
               return (
                 <div
                   key={e.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-rose-500 border border-rose-300 shadow-md animate-pulse"
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-md ${
+                    e.isChasing
+                      ? 'w-3 h-3 bg-red-600 border-white ring-2 ring-red-500 animate-ping'
+                      : 'w-2.5 h-2.5 bg-rose-500 border-rose-300'
+                  }`}
                   style={{ left: `${rx}%`, top: `${rz}%` }}
                 />
               );
@@ -1407,7 +1472,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
             </span>
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-              <span>敵人 (接觸開戰)</span>
+              <span>敵人 (可走位閃躲)</span>
             </span>
           </div>
         </div>
@@ -1417,23 +1482,23 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       <div className="hidden sm:flex absolute top-4 right-4 z-20 flex-col gap-1.5 px-3 py-2 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-700/80 text-[11px] text-slate-300 shadow-lg">
         <div className="font-bold text-white text-xs mb-0.5 flex items-center gap-1">
           <Eye className="w-3.5 h-3.5 text-rose-400" />
-          <span>接觸式地牢</span>
+          <span>動態主動地牢</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-rose-500" />
-          <span>碰撞/靠近地圖上的怪物即可交戰</span>
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+          <span>怪物進入警戒會主動追擊，可走位閃開！</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-amber-400" />
-          <span>擊倒怪物後自地圖清除</span>
+          <span>營火/寶箱/商人隨機出現在地牢側室</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400" />
-          <span>營火回復 · 寶箱拾取 · 商店交易</span>
+          <span className="w-2 h-2 rounded-full bg-sky-400" />
+          <span>擊倒怪物後清除道路</span>
         </div>
       </div>
 
-      {/* Bottom Center: Contextual Interaction Banner (near enemy/prop/boss) */}
+      {/* Bottom Center: Contextual Interaction Banner */}
       {activePrompt && (
         <div className="absolute bottom-24 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 max-w-md w-full px-4 animate-bounce">
           <button
@@ -1474,7 +1539,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         </div>
       )}
 
-      {/* Bottom Left: Mobile Dynamic Virtual Joystick (Fluid 360° Touch) */}
+      {/* Bottom Left: Mobile Dynamic Virtual Joystick */}
       <div
         ref={joystickBaseRef}
         onTouchStart={handleTouchStart}
@@ -1482,11 +1547,9 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         onTouchEnd={handleTouchEnd}
         className="absolute bottom-5 left-5 z-30 w-28 h-28 rounded-full bg-slate-900/80 backdrop-blur-md border-2 border-slate-700/80 shadow-2xl flex items-center justify-center touch-none select-none active:border-rose-500 transition-colors"
       >
-        {/* Joystick Crosshairs */}
         <div className="absolute w-full h-[1px] bg-slate-800 pointer-events-none" />
         <div className="absolute h-full w-[1px] bg-slate-800 pointer-events-none" />
 
-        {/* Joystick Thumb Knob */}
         <div
           ref={joystickKnobRef}
           className={`w-12 h-12 rounded-full border-2 shadow-lg transition-transform pointer-events-none flex items-center justify-center ${
@@ -1502,7 +1565,7 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
         </div>
       </div>
 
-      {/* Bottom Right: Quick Interaction / Action Button */}
+      {/* Bottom Right: Quick Interaction Action Button */}
       {activePrompt ? (
         <div className="absolute bottom-6 right-6 z-30">
           <button
@@ -1526,14 +1589,14 @@ export const HD2DDungeonScene: React.FC<HD2DDungeonSceneProps> = ({
       ) : (
         <div className="absolute bottom-6 right-6 z-20 pointer-events-none hidden sm:block">
           <div className="px-4 py-2 rounded-xl bg-slate-900/80 backdrop-blur-md border border-slate-800 text-xs text-slate-400">
-            滑鼠點擊地面尋路 · 虛擬搖桿移動 · 碰撞怪物即戰鬥
+            操控走位可閃避敵人追擊 · 碰撞或點擊交戰
           </div>
         </div>
       )}
 
       {/* Bottom Instruction Pill */}
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 text-[10px] text-slate-400 bg-slate-950/80 px-3 py-1 rounded-full border border-slate-800 pointer-events-none hidden md:block">
-        WASD/方向鍵或左下角虛擬搖桿操控 · 點擊地面尋路 · 碰撞怪物觸發對戰
+        WASD/方向鍵或虛擬搖桿操控 · 靠近敵人會發起追擊可走位閃躲 · 營火寶箱商人隨機出現
       </div>
     </div>
   );
