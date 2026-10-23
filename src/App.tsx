@@ -144,7 +144,7 @@ export default function App() {
     }
 
     if (result.fled) {
-      advanceFloor();
+      setView('dungeon_map');
       return;
     }
 
@@ -194,14 +194,19 @@ export default function App() {
         return copy;
       });
     }
+    const wasBoss = currentNode?.type === 'boss';
     setPendingReward(null);
-    advanceFloor();
+    if (wasBoss) {
+      advanceFloor();
+    } else {
+      setView('dungeon_map');
+    }
   };
 
   // Camp completion handler
   const handleCompleteCamp = (updatedParty: PokemonInstance[]) => {
     setParty(updatedParty);
-    advanceFloor();
+    setView('dungeon_map');
   };
 
   // Shop completion handler
@@ -211,7 +216,7 @@ export default function App() {
   ) => {
     setCoins(newCoins);
     setInventory(newInventory);
-    advanceFloor();
+    setView('dungeon_map');
   };
 
   // Event completion handler
@@ -223,7 +228,24 @@ export default function App() {
     setParty(result.updatedParty);
     setCoins(result.updatedCoins);
     setInventory(result.updatedInventory);
-    advanceFloor();
+    setView('dungeon_map');
+  };
+
+  // Treasure chest loot handler
+  const handleLootChest = (earnedCoins: number, rewardItem?: Item) => {
+    setCoins((c) => c + earnedCoins);
+    if (rewardItem) {
+      setInventory((prev) => {
+        const copy = [...prev];
+        const idx = copy.findIndex((i) => i.item.id === rewardItem.id);
+        if (idx !== -1) {
+          copy[idx].count += 1;
+        } else {
+          copy.push({ item: rewardItem, count: 1 });
+        }
+        return copy;
+      });
+    }
   };
 
   // Restart game back to title
@@ -254,6 +276,8 @@ export default function App() {
           soundEnabled={soundEnabled}
           onToggleSound={handleToggleSound}
           onSelectNode={handleSelectNode}
+          onAdvanceFloor={advanceFloor}
+          onLootChest={handleLootChest}
           onOpenParty={() => setShowPartyModal(true)}
           onOpenBag={() => setShowBagModal(true)}
         />

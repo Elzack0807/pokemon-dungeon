@@ -276,3 +276,129 @@ export function createTorchFlameTexture(): THREE.CanvasTexture {
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
+
+/**
+ * Procedural Tall Grass tuft texture for dungeon wild grass patches.
+ */
+export function createGrassTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.clearRect(0, 0, 128, 128);
+
+  // Draw 7-8 stylized grassy blades
+  const blades = [
+    { x: 30, h: 90, c: '#15803d', w: 8, curve: -15 },
+    { x: 45, h: 110, c: '#16a34a', w: 10, curve: -8 },
+    { x: 64, h: 120, c: '#22c55e', w: 11, curve: 0 },
+    { x: 80, h: 105, c: '#16a34a', w: 9, curve: 10 },
+    { x: 95, h: 85, c: '#15803d', w: 8, curve: 18 },
+    { x: 52, h: 70, c: '#4ade80', w: 6, curve: -4 },
+    { x: 74, h: 75, c: '#86efac', w: 6, curve: 6 },
+  ];
+
+  blades.forEach((b) => {
+    ctx.fillStyle = b.c;
+    ctx.beginPath();
+    ctx.moveTo(b.x - b.w / 2, 128);
+    ctx.quadraticCurveTo(
+      b.x + b.curve,
+      128 - b.h * 0.5,
+      b.x + b.curve * 1.4,
+      128 - b.h
+    );
+    ctx.quadraticCurveTo(
+      b.x + b.curve * 0.6,
+      128 - b.h * 0.5,
+      b.x + b.w / 2,
+      128
+    );
+    ctx.fill();
+  });
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/**
+ * Procedural swirling Boss Dark/Fire Aura ring texture.
+ */
+export function createBossAuraTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.clearRect(0, 0, 256, 256);
+
+  const center = 128;
+  const grad = ctx.createRadialGradient(center, center, 30, center, center, 120);
+  grad.addColorStop(0, 'rgba(225, 29, 72, 0)');
+  grad.addColorStop(0.5, 'rgba(225, 29, 72, 0.45)');
+  grad.addColorStop(0.75, 'rgba(168, 85, 247, 0.7)');
+  grad.addColorStop(0.9, 'rgba(244, 63, 94, 0.9)');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(center, center, 120, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Spikes and runes
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(center, center, 95, 0, Math.PI * 2);
+  ctx.stroke();
+
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI) / 4;
+    const r1 = 80;
+    const r2 = 110;
+    ctx.beginPath();
+    ctx.moveTo(center + Math.cos(angle) * r1, center + Math.sin(angle) * r1);
+    ctx.lineTo(center + Math.cos(angle) * r2, center + Math.sin(angle) * r2);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/**
+ * Procedural Descent Portal Rune Texture.
+ */
+export function createPortalRuneTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.clearRect(0, 0, 256, 256);
+
+  const center = 128;
+  const grad = ctx.createRadialGradient(center, center, 20, center, center, 120);
+  grad.addColorStop(0, 'rgba(56, 189, 248, 0.9)');
+  grad.addColorStop(0.4, 'rgba(14, 165, 233, 0.6)');
+  grad.addColorStop(0.8, 'rgba(99, 102, 241, 0.4)');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(center, center, 120, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(center, center, 85, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
