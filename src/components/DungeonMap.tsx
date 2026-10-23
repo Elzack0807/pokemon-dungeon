@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DungeonNode, PokemonInstance, Item } from '../types/pokemon';
 import { PokemonSprite } from './PokemonSprite';
 import { HD2DDungeonScene } from './HD2DDungeonScene';
@@ -14,6 +14,7 @@ import {
   Flame,
   ArrowRight,
   Sparkles,
+  Swords,
 } from 'lucide-react';
 
 interface DungeonMapProps {
@@ -47,15 +48,20 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
   onOpenParty,
   onOpenBag,
 }) => {
-  const [dangerLevel, setDangerLevel] = useState<number>(15);
+  const [defeatedEnemyIds, setDefeatedEnemyIds] = useState<string[]>([]);
   const [hasLootedChest, setHasLootedChest] = useState<boolean>(false);
   const [lootToast, setLootToast] = useState<{ message: string; sub?: string } | null>(null);
+
+  // Reset floor state when ascending/descending floors
+  useEffect(() => {
+    setDefeatedEnemyIds([]);
+    setHasLootedChest(false);
+  }, [currentFloor]);
 
   const activeLead = party[0] || party.find((p) => p.currentHp > 0);
   const isBossFloor = currentFloor % 3 === 0 || nodes.some((n) => n.type === 'boss');
   const playerPartyLevel = party.length > 0 ? Math.max(...party.map((p) => p.level), 5) : 5;
 
-  // Sector title calculation
   const getSectorName = (floor: number) => {
     if (floor <= 3) return '深谷地底迴廊 (岩石荒原)';
     if (floor <= 6) return '水之潮汐地下湖 (藍色水窟)';
@@ -69,11 +75,18 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
     sound.playSelect();
     setLootToast({
       message: `🎉 開啟古代寶箱！獲得 ${earnedCoins} 金幣`,
-      sub: item ? `額外發現道具：【${item.nameZh}】！` : undefined,
+      sub: item ? `額外獲得道具：【${item.nameZh}】！` : undefined,
     });
     setTimeout(() => {
       setLootToast(null);
     }, 3800);
+  };
+
+  const handleTriggerBattleFromMap = (node: DungeonNode, enemyId?: string) => {
+    if (enemyId) {
+      setDefeatedEnemyIds((prev) => (prev.includes(enemyId) ? prev : [...prev, enemyId]));
+    }
+    onSelectNode(node);
   };
 
   return (
@@ -90,9 +103,9 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
       </div>
 
       {/* Top HUD Bar */}
-      <header className="relative z-20 w-full bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-3 md:px-6 py-2.5 flex items-center justify-between gap-3 shadow-xl">
+      <header className="relative z-20 w-full bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-3 md:px-6 py-2.5 flex items-center justify-between gap-2 shadow-xl">
         {/* Left: Floor & Sector */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-mono font-bold">
             <Compass className="w-3.5 h-3.5 text-rose-400" />
             <span>
@@ -105,19 +118,19 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
         </div>
 
         {/* Center: Objective Badge */}
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-xs">
+        <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-xs">
           {isBossFloor ? (
             <>
               <Flame className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
               <span className="font-semibold text-rose-300">
-                【首領聖域】深入迴廊挑戰鎮守首領！
+                【首領聖域】深入迴廊挑戰鎮守首領！(接觸即可交戰)
               </span>
             </>
           ) : (
             <>
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <Swords className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-slate-300">
-                探索草叢尋寶與修憩，前往聖域傳送門通往下層！
+                地圖怪物直接生成，碰撞敵人即刻交戰；探索傳送門通往下層！
               </span>
             </>
           )}
@@ -126,7 +139,7 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
         {/* Right HUD Controls */}
         <div className="flex items-center gap-2">
           {/* PokéCoins */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-mono font-bold">
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-mono font-bold">
             <Coins className="w-3.5 h-3.5 text-amber-400" />
             <span className="tabular-nums">{coins}</span>
           </div>
@@ -176,7 +189,7 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
 
       {/* Floating Loot Notification Toast */}
       {lootToast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
           <div className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold shadow-2xl border border-amber-300 text-center">
             <div className="text-sm md:text-base">{lootToast.message}</div>
             {lootToast.sub && (
@@ -187,7 +200,7 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
       )}
 
       {/* Main Exploration Body */}
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-2 md:px-6 py-3 flex flex-col justify-start gap-3">
+      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-2 md:px-6 py-2.5 flex flex-col justify-start gap-2.5">
         {/* Party Mini Health Dock */}
         <div className="w-full flex items-center justify-between gap-2 overflow-x-auto py-1">
           <div className="flex items-center gap-2">
@@ -266,7 +279,8 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
             nodes={nodes}
             leadPokemon={activeLead}
             playerPartyLevel={playerPartyLevel}
-            onTriggerBattle={onSelectNode}
+            defeatedEnemyIds={defeatedEnemyIds}
+            onTriggerBattle={handleTriggerBattleFromMap}
             onOpenCamp={() => {
               const campNode = nodes.find((n) => n.type === 'camp') || {
                 id: `camp_${currentFloor}`,
@@ -309,8 +323,6 @@ export const DungeonMap: React.FC<DungeonMapProps> = ({
             }}
             onAdvanceFloor={onAdvanceFloor}
             onLootChest={handleLootChestInternal}
-            dangerLevel={dangerLevel}
-            setDangerLevel={setDangerLevel}
             hasLootedChest={hasLootedChest}
             setHasLootedChest={setHasLootedChest}
           />
