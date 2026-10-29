@@ -219,7 +219,7 @@ export const BattleArena: React.FC<BattleArenaProps> = ({
     setIsProcessing(true);
     setDrawer('none');
 
-    // Start of Turn: Status Damage
+    // Start of Turn: Status Damage evaluated before attack
     if (activePlayer.status === 'Burn' || activePlayer.status === 'Poison') {
       const dmg = Math.floor(activePlayer.maxHp * 0.125);
       const nextHp = Math.max(0, activePlayer.currentHp - dmg);
@@ -230,8 +230,24 @@ export const BattleArena: React.FC<BattleArenaProps> = ({
       if (nextHp <= 0) {
         sound.playFaint();
         addLog(`${activePlayer.nameZh} 倒下了！`);
-        // ... (handle fainting)
-        setIsProcessing(false);
+
+        const aliveIndex = party.findIndex((p, idx) => idx !== activePlayerIndex && p.currentHp > 0);
+        if (aliveIndex !== -1) {
+          await sleep(1000);
+          setActivePlayerIndex(aliveIndex);
+          addLog(`上吧！${party[aliveIndex].nameZh}！`);
+          setIsProcessing(false);
+          return;
+        }
+
+        await sleep(1200);
+        onBattleEnd({
+          victory: false,
+          expGained: 0,
+          coinsEarned: 0,
+          updatedParty: party,
+          updatedInventory: inventory,
+        });
         return;
       }
     }
@@ -425,6 +441,59 @@ export const BattleArena: React.FC<BattleArenaProps> = ({
     if (activeOpponent.currentHp <= 0) {
       setIsProcessing(false);
       return;
+    }
+
+    // Start of Turn: Opponent Status Condition Damage (Burn / Poison) evaluated before next attack
+    if (activeOpponent.status === 'Burn' || activeOpponent.status === 'Poison') {
+      const dmg = Math.floor(activeOpponent.maxHp * 0.125);
+      const nextHp = Math.max(0, activeOpponent.currentHp - dmg);
+      activeOpponent.currentHp = nextHp;
+      setOpponentTeam((prev) =>
+        prev.map((p, idx) => (idx === activeOpponentIndex ? { ...p, currentHp: nextHp } : p))
+      );
+      addLog(`對手 ${activeOpponent.nameZh} 受到了 ${activeOpponent.status === 'Burn' ? '灼傷' : '中毒'} 傷害！`);
+      await sleep(1000);
+      if (nextHp <= 0) {
+        sound.playFaint();
+        addLog(`對手 ${activeOpponent.nameZh} 倒下了！`);
+        unlockSpecies(activeOpponent.speciesId);
+
+        const nextOppIndex = opponentTeam.findIndex((p, idx) => idx > activeOpponentIndex && p.currentHp > 0);
+        if (nextOppIndex !== -1) {
+          await sleep(1000);
+          setActiveOpponentIndex(nextOppIndex);
+          addLog(`${trainer?.name || '對手'} 換上了 ${opponentTeam[nextOppIndex].nameZh}！`);
+          setIsProcessing(false);
+          return;
+        }
+
+        await sleep(1200);
+        sound.playLevelUp();
+        const totalExpGained = Math.floor(activeOpponent.level * 28 * (trainer ? 1.5 : 1.0));
+        const coinsEarned = Math.floor(activeOpponent.level * 18 + Math.random() * 20);
+        activePlayer.exp += totalExpGained;
+        if (activePlayer.exp >= activePlayer.maxExp) {
+          activePlayer.level += 1;
+          activePlayer.maxExp = Math.floor(activePlayer.maxExp * 1.25);
+          activePlayer.maxHp += 6;
+          activePlayer.currentHp = Math.min(activePlayer.maxHp, activePlayer.currentHp + 6);
+          if (activePlayer.stats) {
+            activePlayer.stats.atk += 2;
+            activePlayer.stats.def += 2;
+            activePlayer.stats.spe += 2;
+          }
+          addLog(`🎉 ${activePlayer.nameZh} 等級提升到了 Lv.${activePlayer.level}！`);
+        }
+        const finalParty = party.map((p, idx) => (idx === activePlayerIndex ? { ...activePlayer } : p));
+        onBattleEnd({
+          victory: true,
+          expGained: totalExpGained,
+          coinsEarned,
+          updatedParty: finalParty,
+          updatedInventory: inventory,
+        });
+        return;
+      }
     }
 
     // Pick Random Move
