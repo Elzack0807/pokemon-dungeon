@@ -915,8 +915,8 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
         const normX = (moveDx / len) * moveSpeed;
         const normY = (moveDy / len) * moveSpeed;
 
-        if (normX < -0.2) playerPosRef.current.facing = 'left';
-        if (normX > 0.2) playerPosRef.current.facing = 'right';
+        if (normX < -0.2) playerPosRef.current.facing = 'right';
+        if (normX > 0.2) playerPosRef.current.facing = 'left';
 
         const isBlockedTile = (tx: number, ty: number): boolean => {
           if (tx < 1 || tx >= MAP_GRID_SIZE - 1 || ty < 1 || ty >= MAP_GRID_SIZE - 1) return true;
@@ -2319,13 +2319,16 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
             }
           }
 
-          // 2. Contact with Enemies (ONLY if NO prop was triggered and NO modal is open)
+          // 2. Contact with Enemies (ONLY if NO prop was triggered and NO modal is open; sorted by distance for closest-first priority)
           if (!propTriggeredThisFrame && !isModalOpen) {
-            for (const enemy of roamingEnemiesRef.current) {
-              if (enemy.defeated) continue;
-              const dist = Math.hypot(playerPx - enemy.px, playerPy - enemy.py);
+            const sortedEnemies = roamingEnemiesRef.current
+              .filter((e) => !e.defeated)
+              .map((e) => ({ e, dist: Math.hypot(playerPx - e.px, playerPy - e.py) }))
+              .sort((a, b) => a.dist - b.dist);
+
+            for (const { e, dist } of sortedEnemies) {
               if (dist <= 32) {
-                triggerBattle(enemy);
+                triggerBattle(e);
                 break;
               }
             }
