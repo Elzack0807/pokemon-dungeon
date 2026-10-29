@@ -1,0 +1,133 @@
+{
+  "map_size": {
+    "width": 50,
+    "height": 50
+  },
+  "tile_legend": {
+    "T": "Tree_Boundary (不可通行密林)",
+    ".": "Plains (普通平地/小徑)",
+    "G": "Tall_Grass (高草叢/野生寶可夢區)",
+    "W": "Water (水域/湖泊)",
+    "L": "Ledge_Down (單向向下跳崖)"
+  },
+  "grid": [
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+    "TTTTTTTTTTTTT.......TTTTTTTTTTTTTTTT.............T",
+    "TTTTTTTTTTTTT.......TTTTTTTTTTTTTTTT.............T",
+    "TTTTTTTTTTTTT.......TTTTTTTTTTTTTTTT.............T",
+    "TTTTTTTTTTTTT.......TTTTTTTGGGGGGGTT.............T",
+    "TTTTTTTTTTTTT.......TTTTTTTGGGGGGGTT..TTTTTTTTTT.T",
+    "TTTTTTTTTTTTT..GGGGGGGTT..............TTTTTTTT...T",
+    "TTTTTTTTTTTTT..GGGGGGGTT..............TTGGGGGG...T",
+    "TTTTTTTTTTTTT..GGGGGG.TT..TGGGGGGG....TTGGGGGG...T",
+    "TTTTTTTTTTTTT..GGGGGGGTT..TGGGGGGG....TTGGGGGG...T",
+    "TTTTTTTTTTTTT..GGG........TTTTTTTT....TTGGGG.....T",
+    "TTTTTTTTTTTTT..GGG.......LLLLLTTTT....TTGGGG...T.T",
+    "TTTTTTTTTTTTT..GGG..GGTTT.....TTTTTT..TTGGGG..GT.T",
+    "TTTTTTTTTTTTT.........................TTTTTT..TT.T",
+    "TTTTTTTTTTTTT......WWWWWGGGGGGG...WW..WWWWTT..TT.T",
+    "TTTTTTTTTTTTT...WWWWWWWWGGGGGGG...WW....WWTT..TT.T",
+    "TTTTTTTTTTTTT...WWWWWWWWGGGGGGG...WW....WWTT..TT.T",
+    "TTTTTTTTTTTTT...WWWWWWWWGGGGGGG...WWWW..WWTT..TT.T",
+    "TTTTTTTTTTTTT...WWWWWWWWGGGGGGG...WWWW..WWTT..TT.T",
+    "T...............WWWWWWWWGGGGGGG...WWWW...........T",
+    "T...............WWWWWWWWGGGGGGG...WWWW........GG.T",
+    "T...GGGGGGGG......................WWWWWWWW....GG.T",
+    "T...GGGGGGGG..........TTTTTTTTTTT.............GG.T",
+    "T...GG.GGGGG..........TTTTTTTTTTT............GGG.T",
+    "TTTTGG.....GTTGG..GGG.TTTTTTTTTTTGGGGGGG..GGGGGG.T",
+    "TTTTGGGGGGGGTTGG..GGG.TTTTTTTTTTTGGG.GGG..GGGGGG.T",
+    "TTTTGGGGGGGGTTGG....G.TTTTTTTTTTTGGG.GGGTTGGGGGGTT",
+    "TTTTGGGGGGGGTTGG....G.TTTTTTTTTTTGGG.GGGTTTTTTTTTT",
+    "TTTTTTTTTTTTTTGGGG..G.TTTT.TTTTTTGGG.GGGTTTTTTTTTT",
+    "TTTTTTTTTTTTTTGGGG..G.TTTT...TTTTGGG.GGGTTTTTTTTTT",
+    "TTTTTWWWWWWWWTTT......TTTTTTTTTTTGGG.GGGTTTTTTTTTT",
+    "TTTTTWWWWWWWWTTT......TTTTTTTTTTT..L.LLLTTTTTTTTTT",
+    "TTTTTWWWWWWWWTTT......TTTTTTTTTTT..........TTTTTTT",
+    "TTTTTWWWWWWWWTTT......TTTTTTTTTTT.....TTTTTTTTTTTT",
+    "TTTTTWWWWWWWWGGG..G...TTTTTTTTTTT.....TTTTTTTTTTTT",
+    "TTTTTWWWWWWWWGGG..G...................TTTTTTTTTTTT",
+    "TTTTTWWWWWWW......G...................TTTTTTTTTTTT",
+    "TTTTTTTTTTTT.....GG...................TTTTTTTTTTTT",
+    "TTTTTTTTTTTT..GGGGG...................TTTTTTTTTTTT",
+    "T.............GGGGG...................TTTTTTTTTTTT",
+    "T.............TTTTTTTTTTTT............TTTTTTTTTTTT",
+    "T..GGG.......TTTTTTTTTTTTT............TTTTTTTTTTTT",
+    "T..GGG..G.TTTTTTTTTTTTTTTT....TTTTTTTTTTTTTTTTTTTT",
+    "T.......G.TTTTTTTTTTTTTTTT....TTTTTTTTTTTTTTTT...T",
+    "T......GG.TTTTTTTTTTTTTTTT....TTTTTTTTTTTTTTTT...T",
+    "T...GGGGG.TTTTTTTTTTTTTTTT....TTTTTTTTTTTTTTTT...T",
+    "T...GGGGG.TTTTTTTTTTTTTTTT....TTTTTTTTTTTTTTTT...T",
+    "T.........TTTTTTTTTTTTTTTT....TTTTTTTTTTTTTTTT...T",
+    "T................................................T",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+  ],
+  "interactable_objects": [
+    {
+      "type": "Cut_Tree",
+      "x": 10,
+      "y": 24,
+      "req_ability": "HM01_Cut",
+      "description": "阻擋西側隱藏林間小徑的細小樹木"
+    },
+    {
+      "type": "Item_Ball",
+      "x": 6,
+      "y": 23,
+      "item": "TM24_Thunderbolt",
+      "description": "林間小道盡頭的技能學習器道具球"
+    },
+    {
+      "type": "Rock_Smash",
+      "x": 26,
+      "y": 28,
+      "req_ability": "HM06_RockSmash",
+      "description": "封鎖中央岩洞入口的可碎裂岩石"
+    },
+    {
+      "type": "Item_Ball",
+      "x": 28,
+      "y": 29,
+      "item": "Rare_Candy",
+      "description": "岩石後方死角藏著的神奇糖果"
+    },
+    {
+      "type": "Strength_Boulder",
+      "x": 36,
+      "y": 25,
+      "req_ability": "HM04_Strength",
+      "description": "阻擋通往東側湖畔捷徑的巨石"
+    },
+    {
+      "type": "Item_Ball",
+      "x": 42,
+      "y": 32,
+      "item": "Ultra_Ball",
+      "description": "東南草叢密境深處的高級球"
+    },
+    {
+      "type": "Cut_Tree",
+      "x": 21,
+      "y": 8,
+      "req_ability": "HM01_Cut",
+      "description": "封鎖北邊花圃密道的小樹"
+    },
+    {
+      "type": "Item_Ball",
+      "x": 46,
+      "y": 4,
+      "item": "Nugget",
+      "description": "出口前東側岩壁凹陷處的金珠道具球"
+    }
+  ],
+  "spawns": {
+    "player_entry": {
+      "x": 2,
+      "y": 48
+    },
+    "map_exit": {
+      "x": 48,
+      "y": 2
+    }
+  }
+}

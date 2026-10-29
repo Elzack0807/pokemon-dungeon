@@ -1,0 +1,8 @@
+{
+  "name": "Pokémon Rogue Dungeon",
+  "description": "寶可夢地牢 Roguelike 冒險：選擇你的初始寶可夢，深入隨機迷宮地牢，迎戰野生寶可夢、強敵訓練家與道館館主！",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
