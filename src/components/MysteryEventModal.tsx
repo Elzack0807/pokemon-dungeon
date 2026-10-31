@@ -29,8 +29,46 @@ export const MysteryEventModal: React.FC<MysteryEventModalProps> = ({
   const [party, setParty] = useState<PokemonInstance[]>(initialParty);
   const [coins, setCoins] = useState<number>(initialCoins);
   const [inventory, setInventory] = useState<{ item: Item; count: number }[]>(initialInventory);
+  const [displayedOptions, setDisplayedOptions] = useState<any[]>([]);
 
   const [isExiting, setIsExiting] = useState<boolean>(false);
+
+  // Initialize randomized options
+  useEffect(() => {
+    // Pool of random recovery options
+    const RECOVERY_OPTIONS: { labelZh: string; descriptionZh: string; outcomeType: "heal" | "item" | "coins" | "gamble" | "curse_buff" | "shiny" | "heal_pp" }[] = [
+      {
+        labelZh: '在此休息片刻',
+        descriptionZh: '全體寶可夢回復 50% HP 與全部招式 PP。',
+        outcomeType: 'heal_pp'
+      },
+      {
+        labelZh: '尋找林間樹果',
+        descriptionZh: '隨機獲得一些回復類道具。',
+        outcomeType: 'item'
+      },
+      {
+        labelZh: '向路過的精靈中心求助',
+        descriptionZh: '全體寶可夢 HP 完全回復！',
+        outcomeType: 'heal'
+      }
+    ];
+
+    // Take the 3 fixed options from the event
+    let options = [...event.options];
+
+    // 40% chance to replace one random option with a recovery option if it's not already a recovery-heavy event
+    if (Math.random() < 0.4) {
+      const randomIdx = Math.floor(Math.random() * options.length);
+      const randomRecovery = RECOVERY_OPTIONS[Math.floor(Math.random() * RECOVERY_OPTIONS.length)];
+      // Avoid duplicates if possible
+      if (!options.some(o => o.outcomeType === randomRecovery.outcomeType)) {
+        options[randomIdx] = randomRecovery;
+      }
+    }
+
+    setDisplayedOptions(options);
+  }, [eventId]);
 
   const handleLeave = () => {
     if (isExiting) return;
@@ -65,6 +103,16 @@ export const MysteryEventModal: React.FC<MysteryEventModalProps> = ({
       });
       setParty([...party]);
       setOutcomeMessage('一陣神聖溫暖的微光包覆著你們，隊伍全員 HP 與異常狀態完全痊癒！');
+    } else if (outcomeType === 'heal_pp') {
+      sound.playRest();
+      party.forEach((p) => {
+        p.currentHp = Math.min(p.maxHp, p.currentHp + Math.floor(p.maxHp * 0.5));
+        p.moves.forEach(m => {
+          m.currentPp = m.maxPp;
+        });
+      });
+      setParty([...party]);
+      setOutcomeMessage('你們在安靜的角落稍作休息，全隊回復了大量 HP 並補滿了所有招式的 PP！');
     } else if (outcomeType === 'coins') {
       const added = 100;
       setCoins((c) => c + added);
@@ -139,7 +187,7 @@ export const MysteryEventModal: React.FC<MysteryEventModalProps> = ({
               你要如何應對此事件？
             </span>
             <div className="space-y-2">
-              {event.options.map((opt, i) => (
+              {displayedOptions.map((opt, i) => (
                 <button
                   key={i}
                   onClick={() => handleChoose(opt.outcomeType)}

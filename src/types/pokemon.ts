@@ -183,6 +183,6 @@ export interface MysteryEvent {
   options: {
     labelZh: string;
     descriptionZh: string;
-    outcomeType: 'heal' | 'item' | 'coins' | 'gamble' | 'curse_buff' | 'shiny';
+    outcomeType: 'heal' | 'item' | 'coins' | 'gamble' | 'curse_buff' | 'shiny' | 'heal_pp';
   }[];
 }

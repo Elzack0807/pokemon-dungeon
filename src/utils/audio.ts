@@ -309,7 +309,8 @@ class SoundSystem {
       this.battleAudio.volume = this.volume * 0.8;
       this.battleAudio.onerror = () => {
         if (this.battleAudio) {
-          this.battleAudio.src = `${base}/assets/audio/battle_bgm_suno.mp3`; // fallback
+          const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL.replace(/\/$/, '') : '';
+          this.battleAudio.src = `${base}/assets/audio/battle_bgm_suno.m4a`;
         }
       };
     }

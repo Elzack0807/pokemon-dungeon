@@ -157,6 +157,14 @@ export const BattleArena: React.FC<BattleArenaProps> = ({
   ) || 1;
   const playerPpPct = Math.round((playerTotalCurPp / playerTotalMaxPp) * 100);
 
+  // BGM Management
+  useEffect(() => {
+    sound.startBattleBgm(!!trainer || (activeOpponent?.level > 30));
+    return () => {
+      sound.startDungeonBgm();
+    };
+  }, [trainer, activeOpponent?.level]);
+
   // Initial greeting log
   useEffect(() => {
     if (trainer && activeOpponent) {
