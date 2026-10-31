@@ -996,6 +996,9 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
         const startRow = Math.max(0, Math.floor(camY / TILE_PX) - 1);
         const endRow = Math.min(MAP_GRID_SIZE - 1, Math.ceil((camY + viewH) / TILE_PX) + 1);
 
+        const playerTx = Math.floor(playerPx / TILE_PX);
+        const playerTy = Math.floor(playerPy / TILE_PX);
+
         // =========================================================
         // LAYER 1: BASE GROUND, SHORELINES & DIRT HIGHWAY TRAILS
         // =========================================================
@@ -1004,6 +1007,17 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
             const tileKey = `${c},${r}`;
             const tileX = c * TILE_PX;
             const tileY = r * TILE_PX;
+
+            // Subtle Depth Adjustment (Diorama Effect)
+            const dist = Math.hypot(c - playerTx, r - playerTy);
+            const depthScale = Math.max(0.92, 1 - Math.max(0, dist - 4) * 0.015);
+            const depthDarkness = Math.min(0.45, Math.max(0, dist - 5) * 0.08);
+
+            ctx.save();
+            // Apply subtle scale-down from tile center
+            ctx.translate(tileX + TILE_PX / 2, tileY + TILE_PX / 2);
+            ctx.scale(depthScale, depthScale);
+            ctx.translate(-(tileX + TILE_PX / 2), -(tileY + TILE_PX / 2));
 
             const isWater = waterGrid.has(tileKey);
             const isShore = waterShoreGrid.has(tileKey);
@@ -1199,6 +1213,13 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
               ctx.fillStyle = isIceTundra ? '#dbeafe' : isFireCave ? '#78716c' : '#4ade80';
               ctx.fillRect(tileX, tileY + 12, TILE_PX, 2);
             }
+
+            // Finalize Depth Darkness (Layer 1)
+            if (depthDarkness > 0) {
+              ctx.fillStyle = `rgba(0, 10, 20, ${depthDarkness})`;
+              ctx.fillRect(tileX, tileY, TILE_PX, TILE_PX);
+            }
+            ctx.restore();
           }
         }
 
@@ -1210,6 +1231,16 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
             const tileKey = `${c},${r}`;
             const tileX = c * TILE_PX;
             const tileY = r * TILE_PX;
+
+            // Subtle Depth Adjustment (Layer 2)
+            const dist = Math.hypot(c - playerTx, r - playerTy);
+            const depthScale = Math.max(0.92, 1 - Math.max(0, dist - 4) * 0.015);
+            const depthDarkness = Math.min(0.45, Math.max(0, dist - 5) * 0.08);
+
+            ctx.save();
+            ctx.translate(tileX + TILE_PX / 2, tileY + TILE_PX / 2);
+            ctx.scale(depthScale, depthScale);
+            ctx.translate(-(tileX + TILE_PX / 2), -(tileY + TILE_PX / 2));
 
             const isWater = waterGrid.has(tileKey);
             const isBridge = bridgeTiles.has(tileKey);
@@ -1357,6 +1388,13 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
                 ctx.fillRect(gx + 6 + sway - 1, gy - 10, 2, 3);
               });
             }
+
+            // Finalize Depth Darkness
+            if (depthDarkness > 0) {
+              ctx.fillStyle = `rgba(0, 10, 20, ${depthDarkness})`;
+              ctx.fillRect(tileX, tileY, TILE_PX, TILE_PX);
+            }
+            ctx.restore();
           }
         }
 
@@ -2182,9 +2220,18 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
           },
         });
 
-        // 6. Execute Y-Sorted Rendering of All Entities!
+        // 6. Execute Y-Sorted Rendering of All Entities with Depth-Based Fade
         entityQueue.sort((a, b) => a.renderY - b.renderY);
-        entityQueue.forEach((item) => item.draw());
+        entityQueue.forEach((item) => {
+          // Depth-based transparency for entities (Fog of War proxy)
+          const distY = Math.abs(item.renderY - playerPy) / TILE_PX;
+          const depthAlpha = Math.max(0.65, 1 - Math.max(0, distY - 5) * 0.08);
+
+          ctx.save();
+          ctx.globalAlpha *= depthAlpha;
+          item.draw();
+          ctx.restore();
+        });
 
         // =========================================================
         // LAYER 4: WEATHER ATMOSPHERE & HUD OVERLAYS
