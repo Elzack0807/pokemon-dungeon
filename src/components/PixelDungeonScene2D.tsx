@@ -1791,8 +1791,9 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
 
           ctx.save();
           const s = size * 1.5;
-          // Anchor the bottom of the sprite box directly onto the ground shadow at y + 24
-          const drawY = y + 24 - s + bounce;
+          // PokeAPI sprites have significant padding. Sink the image box further (bottom at y + s/2)
+          // so the visual feet of the centered Pokemon align with the ground shadow.
+          const drawY = y + (s * 0.48) - s + bounce;
 
           if (img.complete && img.naturalWidth > 0) {
             ctx.imageSmoothingEnabled = false;
@@ -2020,7 +2021,7 @@ export const PixelDungeonScene2D: React.FC<PixelDungeonScene2DProps> = ({
                 drawCharacterSprite(
                   enemy.pkm,
                   enemy.px,
-                  enemy.py - 14,
+                  enemy.py,
                   bossSprSize,
                   facing,
                   true,
